@@ -1,0 +1,9 @@
+product_id,nama_produk,kategori,harga_satuan,stok
+PKG-BTL-01,Botol PET Bening 500ml,Kemasan Primer,1200,50000
+PKG-BOX-01,Karton Box Die Cut 20x15x8,Kemasan Sekunder,3100,15000
+PKG-TRY-01,Tray Makanan Mika 4 Sekat,Kemasan Primer,800,75000
+PKG-PCH-01,Standing Pouch Aluminium 250g,Kemasan Primer,1500,40000
+PKG-LBL-01,Stiker Label Vinyl Tahan Air,Komponen,350,250000
+PKG-BTL-02,Botol Kaca Amber 250ml,Kemasan Primer,2500,30000
+PKG-CAP-01,Tutup Botol Ulir 28mm,Komponen,250,500000
+PKG-BOX-02,Dus Produk Glossy 10x10x10,Kemasan Primer,2800,25000
