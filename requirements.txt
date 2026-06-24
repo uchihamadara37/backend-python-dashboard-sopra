@@ -1,8 +1,8 @@
 Flask
 Flask-Cors
 pandas
-numpy
-tensorflow-cpu
+numpy<2.0.0
+tensorflow-cpu==2.15.0
 scikit-learn
 joblib
 groq
