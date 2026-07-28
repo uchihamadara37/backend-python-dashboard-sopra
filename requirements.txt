@@ -1,10 +1,6 @@
-Flask
-Flask-Cors
-pandas
-numpy<2.0.0
-tensorflow-cpu==2.15.0
-scikit-learn
-joblib
-groq
-python-dotenv
-gunicorn
+Flask==3.1.3
+Flask-Cors==6.0.2
+pandas==2.3.3
+numpy==2.3.4
+groq==1.5.0
+python-dotenv==1.2.2

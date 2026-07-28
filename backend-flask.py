@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 import numpy as np
-from tensorflow.keras.models import load_model
-import joblib
+# from tensorflow.keras.models import load_model
+# import joblib
 import os
 from groq import Groq
 from dotenv import load_dotenv
@@ -32,8 +32,8 @@ except Exception as e:
 
 
 
-loaded_models = {}
-loaded_scalers = {}
+# loaded_models = {}
+# loaded_scalers = {}
 
 
 # integrasi groq llm
@@ -179,7 +179,7 @@ def get_all_transactions():
 
 
 # =====================================================================
-# PREDIKSI STOK (LSTM)
+# PREDIKSI STOK (SMA - Simple Moving Average)
 # =====================================================================
 @app.route('/api/predict-stock', methods=['GET'])
 def predict_stock():
@@ -190,46 +190,26 @@ def predict_stock():
         return jsonify({"status": "error", "message": "Parameter 'product_id' wajib diisi"}), 400
     
     try:
-        # cek model
-        if product_id not in loaded_models:
-            model_path = f"model_lstm/lstm_{product_id}.keras"
-            scaler_path = f"model_lstm/scaler_{product_id}.pkl"
-            
-            # Cek apakah file fisiknya ada di dalam folder
-            if not os.path.exists(model_path) or not os.path.exists(scaler_path):
-                return jsonify({
-                    "status": "error", 
-                    "message": f"Model untuk produk '{product_id}' tidak ditemukan. Pastikan model telah dilatih dan disimpan di folder 'model_lstm'."
-                }), 404
-                
-            # Jika ada, load model & scaler, lalu simpan ke dictionary cache
-            loaded_models[product_id] = load_model(model_path)
-            loaded_scalers[product_id] = joblib.load(scaler_path)
-            print(f"✅ Model {product_id} berhasil dimuat ke memori.")
-            
-        # Ambil model & scaler dari memori
-        lstm_model = loaded_models[product_id]
-        scaler = loaded_scalers[product_id]    
-        
         # Ambil data spesifik produk unggulan
         df_prod = df_transaksi[df_transaksi['product_id'] == product_id].copy()
         if df_prod.empty:
             return jsonify({"status": "error", "message": f"Tidak ada data transaksi historis untuk '{product_id}'"}), 404
         
+        # Agregasi data penjualan harian
         daily_sales = df_prod.groupby('tanggal')['qty'].sum().reset_index()
         daily_sales = daily_sales.set_index('tanggal').asfreq('D', fill_value=0)
         
+        # Validasi jumlah hari historis minimum
         TIME_STEPS = 14
         if len(daily_sales) < TIME_STEPS:
             return jsonify({"status": "error", "message": f"Data historis kurang dari {TIME_STEPS} hari."}), 400
         
         # =====================================================================
         # Analisis stock minimum dan lead time untuk rekomendasi stok aman
-        # Asumsi parameter operasional pengiriman dari gudang SOPRA ke Reseller:
+        # =====================================================================
         LEAD_TIME_AVG = 3   # Rata-rata pengiriman butuh waktu 3 hari
         LEAD_TIME_MAX = 5   # Jika kurir overload/terlambat, maksimal 5 hari
         
-        # Ekstrak data penjualan harian riil
         data_penjualan = daily_sales['qty'].values
         
         avg_daily_sales = float(np.mean(data_penjualan))
@@ -237,40 +217,37 @@ def predict_stock():
         
         # Hitung Stok Minimum Keamanan (Safety Stock)
         safety_stock = (max_daily_sales * LEAD_TIME_MAX) - (avg_daily_sales * LEAD_TIME_AVG)
-        safety_stock = int(np.ceil(max(0, safety_stock))) # Pembulatan ke atas karena fisik barang
+        safety_stock = int(np.ceil(max(0, safety_stock)))
         
         # Hitung Titik Pesan Ulang (Reorder Point)
         reorder_point = (avg_daily_sales * LEAD_TIME_AVG) + safety_stock
         reorder_point = int(np.ceil(reorder_point))
         
-        # prediksi lstm untuk minggu depan ==================================
-        # Ambil 14 hari terakhir
-        raw_data = daily_sales['qty'].values.reshape(-1, 1)
-        last_14_days = raw_data[-TIME_STEPS:]
+        # =====================================================================
+        # Prediksi SMA (Simple Moving Average) untuk 7 hari ke depan
+        # =====================================================================
+        WINDOW_SIZE = 7
         
-        # Normalisasi menggunakan scaler yang sama saat training
-        scaled_input = scaler.transform(last_14_days)
+        # Ambil 7 hari terakhir sebagai basis awal perhitungan
+        history = list(data_penjualan[-WINDOW_SIZE:])
+        list_prediksi_harian = []
         
-        reshaped_input = scaled_input.reshape(1, TIME_STEPS, 1)
-        prediksi_scaled = lstm_model.predict(reshaped_input, verbose=0)
-        prediksi_scaled_reshaped = prediksi_scaled.reshape(-1, 1)
-        prediksi_asli_array = scaler.inverse_transform(prediksi_scaled_reshaped)
-        
-        # Ekstrak ke dalam list dasar Python, bulatkan, dan amankan (tidak boleh minus)
-        list_prediksi_harian = [max(0, int(np.round(val[0]))) for val in prediksi_asli_array]
-        
+        for _ in range(7):
+            # Hitung rata-rata dari window terakhir
+            next_pred_float = sum(history[-WINDOW_SIZE:]) / WINDOW_SIZE
+            
+            # Bulatkan dan pastikan tidak minus untuk hasil akhir JSON
+            next_pred_rounded = max(0, int(np.round(next_pred_float)))
+            list_prediksi_harian.append(next_pred_rounded)
+            
+            # Tambahkan hasil prediksi (angka pecahan) ke history 
+            # sebagai landasan prediksi hari berikutnya
+            history.append(next_pred_float)
+            
         # Kalkulasi total seminggu
         total_forecast_seminggu = sum(list_prediksi_harian)
         
-        # reshaped_input = scaled_input.reshape(1, TIME_STEPS, 1)
-        
-        # # Lakukan peramalan
-        # prediksi_scaled = lstm_model.predict(reshaped_input, verbose=0)
-        # prediksi_asli = scaler.inverse_transform(prediksi_scaled)
-        # hasil_prediksi = int(np.round(prediksi_asli[0][0]))
-        # hasil_prediksi = max(0, hasil_prediksi)
-        
-        # Kembalikan response JSON 
+        # Kembalikan response JSON (Skema persis seperti sebelumnya)
         return jsonify({
             "status": "success",
             "product_id": product_id,
@@ -288,7 +265,6 @@ def predict_stock():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 
 
